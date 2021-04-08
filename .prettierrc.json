@@ -1,0 +1,11 @@
+{
+    "arrowParens": "always",
+    "bracketSpacing": true,
+    "insertPragma": false,
+    "printWidth": 120,
+    "useTabs": false,
+    "singleQuote": false,
+    "requirePragma": false,
+    "semi": true,
+    "quoteProps": "as-needed"
+}

@@ -1,0 +1,17 @@
+{
+    "compilerOptions": {
+        "allowJs": false,
+        "allowSyntheticDefaultImports": true,
+        "alwaysStrict": true,
+        "downlevelIteration": true,
+        "target": "es6",
+        "lib": [
+            "ESNext",
+            "DOM"
+        ],
+        "moduleResolution": "node",
+        "skipDefaultLibCheck": true,
+        "skipLibCheck": true,
+        "outDir": "server"
+    },
+}
