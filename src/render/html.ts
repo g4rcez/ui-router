@@ -8,18 +8,14 @@ import { RenderCache } from "./cache";
 export const VENDOR_FILE = /vendor\/(?<package>(@[a-z-]+)?[a-z-]+)(?<version>_([0-9]+)\.([0-9]+)\.([0-9]+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+)?)?/;
 export const IMPORT_VENDOR_FILE = /from"(.\/)(?<package>(@[a-z-]+)?[a-z-]+)(?<version>_([0-9]+)\.([0-9]+)\.([0-9]+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+)?)?.js"/g;
 
-export namespace HtmlParser {
-  export const FirstParse = (html: string): HTMLElement => parse(html, { comment: false, lowerCaseTagName: true });
-
-  export const Parse = (html: string): HTMLElement => parse(html, { comment: true, lowerCaseTagName: false });
-
+export namespace Html {
   type RemapUrl = (path: string) => string;
 
   type Params = {
     app: Render.App;
     dom: HTMLElement;
     fileManager: FileManager;
-    cache: RenderCache.Cacher;
+    cache: RenderCache.Operations;
     mapPathToServer: RemapUrl;
     mapPathToCache: RemapUrl;
     vendorReplacer: (file: string) => string;
@@ -39,15 +35,38 @@ export namespace HtmlParser {
 
   const tagFunc: TagFunc = { SCRIPT: tagFuncBase, LINK: tagFuncBase };
 
+  export const DependencyPath = "/node_modules";
+
+  export const FirstParse = (html: string): HTMLElement => parse(html, { comment: false, lowerCaseTagName: true });
+
+  export const Parse = (html: string): HTMLElement => parse(html, { comment: true, lowerCaseTagName: false });
+
+  const QuerySelectorAll = (dom: HTMLElement, query: string): HTMLElement[] => [...dom.querySelectorAll(query)];
+
+  export const InsertBefore = (dom: HTMLElement, template: string) => dom.insertAdjacentHTML("afterbegin", template);
+
+  export const IsHtml = (name: string): boolean => /\.html$/.test(name);
+
+  export const IsJS = (name: string): boolean => /\.js$/.test(name);
+
+  export const IsVendorJs = (name: string): boolean => /\.js$/.test(name) && VENDOR_FILE.test(name);
+
+  export const ReplaceVendorImport = (name: string): string => name.replace(IMPORT_VENDOR_FILE, '"/vendor/$2$4/"');
+
+  export const VendorNameVersion = (name: string): { package: string; version: string } =>
+    VENDOR_FILE.exec(name)?.groups! as never;
+
+  export const ContentType = {
+    Html: "text/html",
+    Js: "text/javascript",
+    Css: "text/css",
+  };
+
   export const CreateURLVendorReplacer = (app: Render.App) => {
     const regex = new RegExp(`/${app.name}/${app.version}/@vendor/`, "gm");
-
     return (val: string) => {
-      const replaced = val.replace(regex, "/libs/").replace(/\.\/@vendor\//gm, "/libs/");
-      if (app.name === "xablau" && val.length <= 3000) {
-        console.warn({ regex, val, r: replaced });
-      }
-      return replaced;
+      const thirdPartyPath = `${Html.DependencyPath}/`;
+      return val.replace(regex, thirdPartyPath).replace(/\.\/@vendor\//gm, thirdPartyPath);
     };
   };
 
@@ -68,14 +87,10 @@ export namespace HtmlParser {
     }
   };
 
-  const QuerySelectorAll = (dom: HTMLElement, query: string): HTMLElement[] => [...dom.querySelectorAll(query)];
-
-  export const InsertBefore = (dom: HTMLElement, template: string) => dom.insertAdjacentHTML("afterbegin", template);
-
   export const RenderTransform: RemapAndCache = async (params) => {
     try {
       const head = params.dom.querySelector("head");
-      const body = params.dom.querySelector("body");
+      // const body = params.dom.querySelector("body");
       head.appendChild(Parse(`<meta http-equiv="x-dns-prefetch-control" content="on"/>`));
       const scriptsImages = QuerySelectorAll(params.dom, "script[src],img[src]").map((dom) =>
         editUrlProperty({ ...params, dom, property: "src" })
@@ -92,19 +107,8 @@ export namespace HtmlParser {
     }
   };
 
-  export const IsHtml = (name: string): boolean => /\.html$/.test(name);
-
-  export const IsJS = (name: string): boolean => /\.js$/.test(name);
-
-  export const IsVendorJs = (name: string): boolean => /\.js$/.test(name) && VENDOR_FILE.test(name);
-
-  export const VendorNameVersion = (name: string): { package: string; version: string } =>
-    VENDOR_FILE.exec(name)?.groups! as never;
-
-  export const ReplaceVendorImport = (name: string): string => name.replace(IMPORT_VENDOR_FILE, '"/vendor/$2$4/"');
-
-  export const Minify = (html: string) =>
-    minify(html, {
+  export const Minify = (html: HTMLElement) =>
+    minify(html.toString(), {
       html5: true,
       collapseBooleanAttributes: true,
       collapseInlineTagWhitespace: true,
@@ -119,7 +123,7 @@ export namespace HtmlParser {
     params: Record<string, string>;
   };
 
-  export const AddScript = (x: { filename: string; app: Render.App; content: string; cache: RenderCache.Cacher }) => {
+  export const AddScript = (x: { filename: string; app: Render.App; content: string; cache: RenderCache.Operations }) => {
     const url = "/" + Strings.joinUrl(x.app.name, x.app.version, x.filename);
     x.cache.set(url, {
       content: x.content,
@@ -130,20 +134,18 @@ export namespace HtmlParser {
   };
 
   export const SSG = (html: string, _: SSGParams) => {
-    const uid = Strings.nonce();
+    const nonce = Strings.nonce();
     const dom = Parse(html);
     const head = dom.querySelector("head");
     const csp = dom.querySelector(`meta[http-equiv="Content-Security-Policy"]`);
     if (csp !== null) {
       head.appendChild(
         Parse(
-          `<meta http-equiv="Content-Security-Policy" content="'nonce-${uid}' 'self' cdn.split.io https://www.google-analytics.com/analytics.js">`
+          `<meta http-equiv="Content-Security-Policy" content="'nonce-${nonce}' 'self' cdn.split.io https://www.google-analytics.com/analytics.js">`
         )
       );
     }
-    [...QuerySelectorAll(dom, "script"), ...QuerySelectorAll(dom, "link")].map((x) => {
-      return x.setAttribute("nonce", uid);
-    });
+    QuerySelectorAll(dom, "script,link").map((x) => x.setAttribute("nonce", nonce));
     return dom.toString();
   };
 }

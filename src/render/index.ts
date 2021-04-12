@@ -1,7 +1,7 @@
 import { IFileManager } from "../file-manager";
 import { Strings } from "../lib/strings";
 import { RenderCache } from "./cache";
-import { HtmlParser } from "./html";
+import { Html } from "./html";
 
 export namespace Render {
   export type App = {
@@ -16,7 +16,6 @@ export namespace Render {
 
   export type Constructor = {
     fileManager: IFileManager;
-    host: string;
     cacheStrategy: string;
   };
 
@@ -24,15 +23,15 @@ export namespace Render {
 
   const reduceApps = async (apps: Apps) => apps.reduce<AppsMap>((acc, el) => ({ ...acc, [el.name]: el }), {});
 
-  export const Boot = async (constructor: Constructor) => {
+  export const Init = async (constructor: Constructor) => {
     const fileManager = await constructor.fileManager();
     const apps = await fileManager.fetchVersions();
     const appsMap = await reduceApps(apps);
-    const cache = RenderCache.InMemory();
+    const cache = RenderCache.getCacheStrategy("in-memory");
 
     const cacheApp = async (app: App) => {
       if (app.type === "javascript") {
-        const jsFile = await fileManager.get(Strings.appName(app.name, app.version));
+        const jsFile = await fileManager.get(Strings.appVersion(app.name, app.version));
         cache.set(app.entryPoint, jsFile);
         return Promise.resolve();
       }
@@ -41,8 +40,8 @@ export namespace Render {
       const allFiles = await fileManager.getAllAppFiles(app.location, app.version);
       const appRoot = Strings.joinUrl(app.name, app.version);
 
-      const HTMLs = allFiles.filter((x) => HtmlParser.IsHtml(x));
-      const assets = allFiles.filter((x) => !HtmlParser.IsHtml(x));
+      const pages = allFiles.filter((x) => Html.IsHtml(x));
+      const assets = allFiles.filter((x) => !Html.IsHtml(x));
 
       const mapPathToCache = (file: string) => {
         if (file.includes(appRoot)) return file;
@@ -53,40 +52,32 @@ export namespace Render {
         if (file.includes(appBase)) return file;
         return Strings.joinUrl(appBase, file);
       };
-      const vendorReplacer = HtmlParser.CreateURLVendorReplacer(app);
+
+      const vendorReplacer = Html.CreateURLVendorReplacer(app);
 
       await Promise.allSettled(
         assets.map(async (file) => {
           const fileUrl = Strings.joinUrl(appBase, file);
           const response = await fileManager.get(fileUrl);
           const newContent = vendorReplacer(response.content);
-
-          if (HtmlParser.IsVendorJs(file)) {
-            const vendor = HtmlParser.VendorNameVersion(file);
-            const url = Strings.joinUrl("/libs", `${vendor.package}${vendor.version}.js`);
-            return cache.set(url, {
-              content: newContent,
-              type: "text/html",
-              sha256: Strings.sha256(newContent),
-            });
+          const sha256 = Strings.sha256(newContent);
+          if (Html.IsVendorJs(file)) {
+            const vendor = Html.VendorNameVersion(file);
+            const url = Strings.joinUrl(Html.DependencyPath, `${vendor.package}${vendor.version}.js`);
+            return cache.set(url, { content: newContent, type: Html.ContentType.Js, sha256 });
           }
           const url = Strings.removeTrailingPath("/" + mapPathToCache(file));
-          return cache.set(url, {
-            content: newContent,
-            type: response.type,
-            sha256: Strings.sha256(newContent),
-          });
+          return cache.set(url, { content: newContent, type: response.type, sha256 });
         })
       );
 
       await Promise.allSettled(
-        HTMLs.map(async (x) => {
+        pages.map(async (x) => {
           const fileUrl = Strings.joinUrl(appBase, x);
           const response = await fileManager.get(fileUrl);
-
-          const dom = HtmlParser.FirstParse(response.content);
+          const dom = Html.FirstParse(response.content);
           try {
-            await HtmlParser.RenderTransform({
+            const DOM = await Html.RenderTransform({
               app,
               dom,
               cache,
@@ -95,16 +86,11 @@ export namespace Render {
               mapPathToCache,
               vendorReplacer,
             });
-            const minifyHtml = HtmlParser.Minify(dom.toString());
-            cache.set(appRoot, {
-              content: minifyHtml,
-              type: "text/html",
-              sha256: Strings.sha256(minifyHtml),
-            });
+            const content = Html.Minify(DOM);
+            cache.set(appRoot, { content, type: "text/html", sha256: Strings.sha256(content) });
           } catch (error) {
             console.error(error.name, error.message);
           }
-          return;
         })
       );
     };

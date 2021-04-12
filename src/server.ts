@@ -1,71 +1,74 @@
-import fastify, { FastifyReply, FastifyRequest } from "fastify";
-import { RouteGenericInterface } from "fastify/types/route";
-import { IncomingMessage, Server, ServerResponse } from "node:http";
+import fastify from "fastify";
 import { HttpManager } from "./file-manager/http-server";
+import { Proxy } from "./proxies";
+import { PostmonProxy } from "./proxies/postmon";
 import { Render } from "./render";
-import { HtmlParser } from "./render/html";
+import { Html } from "./render/html";
+import { Request, Response } from "./server.types";
 
-type Request = FastifyRequest<RouteGenericInterface, Server, IncomingMessage>;
-
-type Reply = FastifyReply<Server, IncomingMessage, ServerResponse, RouteGenericInterface, unknown>;
+type Params = {
+  app: string;
+  version: string;
+};
 
 (async () => {
   try {
-    const render = await Render.Boot({
-      fileManager: HttpManager,
-      cacheStrategy: "in-memory",
-      host: "localhost:5000",
-    });
+    const render = await Render.Init({ fileManager: HttpManager, cacheStrategy: "in-memory" });
 
     await render.cacheAll();
 
-    const server = fastify({ caseSensitive: true });
+    const server = fastify({ exposeHeadRoutes: false, onConstructorPoisoning: "error" });
 
-    const getApp = (request: Request, reply: Reply): any => {
-      const x: { app: string; version: string } = request.params as any;
+    server.register((srv, _, done) => {
+      const registerProxies = (...proxy: Proxy.Config[]) => proxy.map((x) => srv.all(x.register, x.handler));
+      registerProxies(PostmonProxy);
+      done();
+    });
+
+    const getApp = (request: Request, response: Response): any => {
+      const x: Params = request.params as any;
       const hasApp = render.hasApp(x.app, x.version);
       if (!hasApp) {
-        reply.status(404);
-        return reply.send({ status: "NotFound" });
+        response.status(404);
+        return response.send({ status: "NotFound" });
       }
       const file = render.getApp(x.app, x.version);
-      reply.type(file.type);
-      const ssg = HtmlParser.SSG(file.content, {
+      response.type(file.type);
+      const ssg = Html.SSG(file.content, {
         params: request.params as never,
         headers: request.headers as never,
       });
-      return reply.send(ssg);
+      return response.send(ssg);
     };
 
-    server.get("/libs/*", (request, reply): any => {
+    server.get(`${Html.DependencyPath}/*`, (request, response): any => {
       const file = render.hasFile(request.url);
       if (file === false) {
-        return reply.status(500);
+        return response.status(500);
       }
+      response.header("Cache-Control", "public, max-age=31536000");
       const x = render.getFile(request.url);
-      reply.status(200);
-      reply.type(x.type);
-      return reply.send(x.content);
+      response.status(200);
+      response.type(x.type);
+      return response.send(x.content);
     });
 
     server.get("/:app/:version", getApp);
     server.get("/:app", getApp);
 
-    server.get("/:app/:version/*", (request, reply): any => {
+    server.get("/:app/:version/*", (request, response): any => {
       const hasFile = render.hasFile(request.url);
       if (!hasFile) {
-        reply.status(404);
-        return reply.send({ status: "NotFound" });
+        response.status(404);
+        const x: Params = request.params as any;
+        const app = render.getApp(x.app);
+        response.type(app.type);
+        return response.send(app.content);
       }
       const file = render.getFile(request.url);
-      if (request.url.endsWith(".css")) {
-        reply.type("text/css");
-      } else if (request.url.endsWith(".js")) {
-        reply.type("text/javascript");
-      } else {
-        reply.type(file.type);
-      }
-      return reply.send(file.content);
+      response.header("Cache-Control", "public, max-age=31536000");
+      response.type(file.type);
+      return response.send(file.content);
     });
 
     server.listen(3000, (err, address) => {

@@ -10,14 +10,14 @@ export namespace RenderCache {
     allKeys: () => string[];
     allFiles: () => CacheFile[];
     has: (path: string) => boolean;
-    set: (path: string, cache: CacheFile) => ReturnType<RenderCacheStrategy>;
+    set: (path: string, cache: CacheFile) => Operations;
   };
 
-  export type Cacher = ReturnType<RenderCacheStrategy>;
+  export type Operations = ReturnType<RenderCacheStrategy>;
 
-  export const InMemory: RenderCacheStrategy = () => {
+  const InMemory: RenderCacheStrategy = () => {
     const cache = new Map<string, CacheFile>();
-    const x: ReturnType<RenderCacheStrategy> = {
+    const x: Operations = {
       allKeys: () => [...cache.keys()],
       allFiles: () => [...cache.values()],
       has: (path) => cache.has(path),
@@ -29,4 +29,10 @@ export namespace RenderCache {
     };
     return x;
   };
+
+  const cacheStrategies: Record<string, RenderCacheStrategy> = {
+    "in-memory": InMemory,
+  };
+
+  export const getCacheStrategy = (name: string) => cacheStrategies[name]?.() ?? InMemory();
 }

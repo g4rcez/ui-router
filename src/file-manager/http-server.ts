@@ -1,19 +1,19 @@
 import { IFileManager } from ".";
-import { httpClient } from "../lib/http-client";
+import axios from "axios";
 import { Strings } from "../lib/strings";
 
 const BASE = "http://localhost:9801";
 
 export const HttpManager: IFileManager = async () => ({
+  formatPath: (p) => Strings.joinUrl(BASE, p),
   fetchVersions: async () => {
-    const response = await httpClient.get(`${BASE}/versions.json`);
+    const response = await axios.get(`${BASE}/versions.json`);
     return response.data;
   },
-  formatPath: (p) => Strings.joinUrl(BASE, p),
   baseUrl: BASE,
   get: async (path) => {
     const href = Strings.joinUrl(BASE, path.replace(/^\.\//, "/"));
-    const response = await httpClient.get(href);
+    const response = await axios.get(href);
     const content = response.data;
     return {
       content,
@@ -23,7 +23,7 @@ export const HttpManager: IFileManager = async () => ({
   },
   getAllAppFiles: async (app, version) => {
     const href = Strings.joinUrl(BASE, app, version, "all__files.json");
-    const response = await httpClient.get(href);
+    const response = await axios.get(href);
     return response.data;
   },
 });
