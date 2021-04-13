@@ -1,3 +1,5 @@
+import { Html } from "./html";
+
 export namespace RenderCache {
   export type CacheFile = {
     type: string;
@@ -6,22 +8,24 @@ export namespace RenderCache {
   };
 
   export type RenderCacheStrategy = () => {
-    get: (path: string) => CacheFile;
+    get: (path: string) => CacheFile | undefined;
     allKeys: () => string[];
-    allFiles: () => CacheFile[];
     has: (path: string) => boolean;
     set: (path: string, cache: CacheFile) => Operations;
+    getAllVendor: () => string[];
   };
 
   export type Operations = ReturnType<RenderCacheStrategy>;
 
   const InMemory: RenderCacheStrategy = () => {
     const cache = new Map<string, CacheFile>();
+
+    const allKeys = () => [...cache.keys()];
     const x: Operations = {
-      allKeys: () => [...cache.keys()],
-      allFiles: () => [...cache.values()],
-      has: (path) => cache.has(path),
-      get: (path) => cache.get(path),
+      allKeys,
+      getAllVendor: () => allKeys().filter((x) => x.startsWith(Html.DependencyPath)),
+      has: (s) => cache.has(s),
+      get: (s) => cache.get(s),
       set: (path, saved) => {
         cache.set(path, saved);
         return x;

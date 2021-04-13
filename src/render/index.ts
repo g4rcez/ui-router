@@ -87,9 +87,9 @@ export namespace Render {
               vendorReplacer,
             });
             const content = Html.Minify(DOM);
-            cache.set(appRoot, { content, type: "text/html", sha256: Strings.sha256(content) });
+            cache.set(appRoot, { content, type: Html.ContentType.Html, sha256: Strings.sha256(content) });
           } catch (error) {
-            console.error(error.name, error.message);
+            console.error("ERROR", error.name, error.message);
           }
         })
       );
@@ -99,7 +99,6 @@ export namespace Render {
       console.time("CACHEALL");
       try {
         await Promise.all(apps.map(cacheApp));
-        console.error(cache.allKeys());
       } catch (error) {
         console.error("Error", error);
       } finally {
@@ -121,8 +120,8 @@ export namespace Render {
       cacheAll,
       hasApp,
       getApp,
-      getFile: (url: string) => cache.get(url),
-      hasFile: (url: string) => cache.has(url),
+      getFile: (key: string) => cache.get(key),
+      hasFile: (key: string) => cache.has(key),
     };
   };
 }

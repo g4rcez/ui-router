@@ -6,7 +6,6 @@ import { Strings } from "../lib/strings";
 import { RenderCache } from "./cache";
 
 export const VENDOR_FILE = /vendor\/(?<package>(@[a-z-]+)?[a-z-]+)(?<version>_([0-9]+)\.([0-9]+)\.([0-9]+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+)?)?/;
-export const IMPORT_VENDOR_FILE = /from"(.\/)(?<package>(@[a-z-]+)?[a-z-]+)(?<version>_([0-9]+)\.([0-9]+)\.([0-9]+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+)?)?.js"/g;
 
 export namespace Html {
   type RemapUrl = (path: string) => string;
@@ -35,7 +34,7 @@ export namespace Html {
 
   const tagFunc: TagFunc = { SCRIPT: tagFuncBase, LINK: tagFuncBase };
 
-  export const DependencyPath = "/node_modules";
+  export const DependencyPath = "/@node_modules";
 
   export const FirstParse = (html: string): HTMLElement => parse(html, { comment: false, lowerCaseTagName: true });
 
@@ -47,11 +46,7 @@ export namespace Html {
 
   export const IsHtml = (name: string): boolean => /\.html$/.test(name);
 
-  export const IsJS = (name: string): boolean => /\.js$/.test(name);
-
   export const IsVendorJs = (name: string): boolean => /\.js$/.test(name) && VENDOR_FILE.test(name);
-
-  export const ReplaceVendorImport = (name: string): string => name.replace(IMPORT_VENDOR_FILE, '"/vendor/$2$4/"');
 
   export const VendorNameVersion = (name: string): { package: string; version: string } =>
     VENDOR_FILE.exec(name)?.groups! as never;
@@ -62,6 +57,8 @@ export namespace Html {
     Css: "text/css",
   };
 
+  export type TemplateFunction = (path: string) => <T extends object>(data: T) => string;
+
   export const CreateURLVendorReplacer = (app: Render.App) => {
     const regex = new RegExp(`/${app.name}/${app.version}/@vendor/`, "gm");
     return (val: string) => {
@@ -71,7 +68,9 @@ export namespace Html {
   };
 
   const editUrlProperty = async (x: Params & { property: string }): Promise<void> => {
-    const value = x.dom.getAttribute(x.property).replace(/^\.\//, "");
+    const attr = x.dom.getAttribute?.(x.property);
+    if (attr === undefined) return;
+    const value = attr.replace(/^\.\//, "");
     const url = x.mapPathToServer(value);
     const response = await x.fileManager.get(url);
     const val = Strings.removeTrailingPath("/" + x.mapPathToCache(value));
@@ -79,12 +78,9 @@ export namespace Html {
     const content = x.vendorReplacer(response.content);
     x.dom.setAttribute(x.property, replacedVendorUrl);
     x.cache.set(replacedVendorUrl, { ...response, content });
-    const integrity = `sha256-${Strings.sha256(content)}`;
-    x.dom.setAttribute("integrity", integrity);
-    const func = tagFunc[x.dom.tagName];
-    if (func) {
-      func(x.dom, { sha256: integrity });
-    }
+    const sha256 = `sha256-${Strings.sha256(content)}`;
+    x.dom.setAttribute("integrity", sha256);
+    tagFunc[x.dom.tagName]?.(x.dom, { sha256 });
   };
 
   export const RenderTransform: RemapAndCache = async (params) => {
@@ -104,6 +100,7 @@ export namespace Html {
       return params.dom;
     } catch (error) {
       console.error(error);
+      throw error;
     }
   };
 
@@ -123,29 +120,35 @@ export namespace Html {
     params: Record<string, string>;
   };
 
-  export const AddScript = (x: { filename: string; app: Render.App; content: string; cache: RenderCache.Operations }) => {
+  export const AddScript = (x: {
+    filename: string;
+    app: Render.App;
+    content: string;
+    cache: RenderCache.Operations;
+  }) => {
     const url = "/" + Strings.joinUrl(x.app.name, x.app.version, x.filename);
     x.cache.set(url, {
       content: x.content,
       sha256: Strings.sha256(x.content),
       type: "application/javascript",
     });
-    return Parse(`<script src="${url}"></di>`);
+    return Parse(`<script src="${url}"></script>`);
   };
 
-  export const SSG = (html: string, _: SSGParams) => {
+  export const SSG = async (html: string, ssgParams: SSGParams) => {
     const nonce = Strings.nonce();
     const dom = Parse(html);
     const head = dom.querySelector("head");
     const csp = dom.querySelector(`meta[http-equiv="Content-Security-Policy"]`);
-    if (csp !== null) {
-      head.appendChild(
-        Parse(
-          `<meta http-equiv="Content-Security-Policy" content="'nonce-${nonce}' 'self' cdn.split.io https://www.google-analytics.com/analytics.js">`
-        )
-      );
+    if (csp === null) {
+      head.appendChild(Parse(`<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}'">`));
     }
     QuerySelectorAll(dom, "script,link").map((x) => x.setAttribute("nonce", nonce));
-    return dom.toString();
+    const ref = { ...ssgParams, user: Strings.nonce() };
+    const variables: Array<keyof typeof ref> = Object.keys(ref) as never;
+    return variables.reduce((acc, el) => {
+      const regex = new RegExp(`\\{\\|\\s${el}\\s\\|\\}`, "g");
+      return acc.replace(regex, ref[el] as never);
+    }, dom.toString());
   };
 }

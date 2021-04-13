@@ -2,7 +2,7 @@ import { IFileManager } from ".";
 import axios from "axios";
 import { Strings } from "../lib/strings";
 
-const BASE = "http://localhost:9801";
+const BASE = "http://0.0.0.0:9801";
 
 export const HttpManager: IFileManager = async () => ({
   formatPath: (p) => Strings.joinUrl(BASE, p),

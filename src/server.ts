@@ -25,6 +25,19 @@ type Params = {
       done();
     });
 
+    const appEntryPoint = async (name: string, request: Request, response: Response) => {
+      const app = render.getApp(name);
+      if (app === undefined) {
+        return response.status(404).send({ notFound: true });
+      }
+      const ssg = await Html.SSG(app.content, {
+        params: request.params as never,
+        headers: request.headers as never,
+      });
+      response.type(app.type);
+      return response.send(ssg);
+    };
+
     const getApp = (request: Request, response: Response): any => {
       const x: Params = request.params as any;
       const hasApp = render.hasApp(x.app, x.version);
@@ -32,13 +45,7 @@ type Params = {
         response.status(404);
         return response.send({ status: "NotFound" });
       }
-      const file = render.getApp(x.app, x.version);
-      response.type(file.type);
-      const ssg = Html.SSG(file.content, {
-        params: request.params as never,
-        headers: request.headers as never,
-      });
-      return response.send(ssg);
+      return appEntryPoint(x.app, request, response);
     };
 
     server.get(`${Html.DependencyPath}/*`, (request, response): any => {
@@ -46,9 +53,11 @@ type Params = {
       if (file === false) {
         return response.status(500);
       }
-      response.header("Cache-Control", "public, max-age=31536000");
       const x = render.getFile(request.url);
-      response.status(200);
+      if (x === undefined) {
+        return response.status(404).send({ notFound: true });
+      }
+      response.header("Cache-Control", "public, max-age=31536000");
       response.type(x.type);
       return response.send(x.content);
     });
@@ -61,17 +70,18 @@ type Params = {
       if (!hasFile) {
         response.status(404);
         const x: Params = request.params as any;
-        const app = render.getApp(x.app);
-        response.type(app.type);
-        return response.send(app.content);
+        return appEntryPoint(x.app, request, response);
       }
       const file = render.getFile(request.url);
+      if (file === undefined) {
+        return response.status(404).send({ notFound: true });
+      }
       response.header("Cache-Control", "public, max-age=31536000");
       response.type(file.type);
       return response.send(file.content);
     });
 
-    server.listen(3000, (err, address) => {
+    server.listen(5000, (err, address) => {
       if (err) {
         server.log.error(err);
         process.exit(1);
