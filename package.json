@@ -3,34 +3,23 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
-  "type": "module",
   "scripts": {
+    "build": "rm -rf ./server && tsc",
     "dev": "ts-node-dev src/server.ts -w",
-    "build": "rm -rf ./server && tsc"
+    "start": "node server/server.js"
   },
   "dependencies": {
     "axios": "0.21.1",
-    "fastify": "^3.14.1",
-    "fastify-http-proxy": "^5.0.0",
-    "html-minifier": "^4.0.0",
-    "middie": "^5.2.0",
-    "node-html-parser": "^3.1.2"
+    "fastify": "3.14.2",
+    "html-minifier": "4.0.0",
+    "node-html-parser": "3.1.4",
+    "tslib": "2.2.0"
   },
   "devDependencies": {
     "@types/html-minifier": "4.0.0",
     "@types/node": "14.14.37",
-    "@types/webpack": "5.28.0",
-    "@webpack-cli/generators": "^2.0.0",
-    "clean-webpack-plugin": "3.0.0",
-    "copy-webpack-plugin": "8.1.0",
-    "declaration-bundler-webpack-plugin": "1.0.3",
-    "glob": "^7.1.6",
-    "ts-loader": "^8.1.0",
+    "glob": "7.1.6",
     "ts-node-dev": "1.1.6",
-    "tsconfig-paths": "3.9.0",
-    "typescript": "^4.2.3",
-    "webpack": "^5.30.0",
-    "webpack-cli": "^4.6.0",
-    "wepack-cli": "0.0.1-security"
+    "typescript": "4.2.4"
   }
 }

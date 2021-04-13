@@ -1,17 +1,25 @@
 {
     "compilerOptions": {
         "allowJs": false,
+        "sourceMap": false,
+        "esModuleInterop": true,
+        "isolatedModules": false,
+        "noImplicitAny": true,
+        "preserveConstEnums": true,
+        "strict": true,
+        "importHelpers": true,
         "allowSyntheticDefaultImports": true,
         "alwaysStrict": true,
         "downlevelIteration": true,
-        "target": "es6",
+        "target": "es5",
+        "moduleResolution": "node",
+        "skipDefaultLibCheck": true,
+        "skipLibCheck": true,
+        "outDir": "server",
+        "strictNullChecks": true,
         "lib": [
             "ESNext",
             "DOM"
         ],
-        "moduleResolution": "node",
-        "skipDefaultLibCheck": true,
-        "skipLibCheck": true,
-        "outDir": "server"
     },
 }
