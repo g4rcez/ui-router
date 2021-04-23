@@ -48,6 +48,10 @@ export namespace Html {
 
   export const IsVendorJs = (name: string): boolean => /\.js$/.test(name) && VENDOR_FILE.test(name);
 
+  const ImageExtensions = ["svg", "png", "jpg", "jpeg"];
+
+  export const IsImageOrgSvg = (str: string) => ImageExtensions.some((x) => str.endsWith(x));
+
   export const VendorNameVersion = (name: string): { package: string; version: string } =>
     VENDOR_FILE.exec(name)?.groups! as never;
 

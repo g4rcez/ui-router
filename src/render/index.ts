@@ -15,6 +15,7 @@ export namespace Render {
   export type Apps = Array<App>;
 
   export type Constructor = {
+    onRebuild: (apps: string[]) => any;
     fileManager: IFileManager;
     cacheStrategy: string;
   };
@@ -25,9 +26,18 @@ export namespace Render {
 
   export const Init = async (constructor: Constructor) => {
     const fileManager = await constructor.fileManager();
-    const apps = await fileManager.fetchVersions();
-    const appsMap = await reduceApps(apps);
     const cache = RenderCache.getCacheStrategy("in-memory");
+
+    const fetchApps = async () => {
+      const apps = await fileManager.fetchVersions();
+      const appsMap = await reduceApps(apps);
+      return { apps, appsMap };
+    };
+
+    const appsFetchRef = await fetchApps();
+    constructor.onRebuild(Object.keys(appsFetchRef.appsMap));
+    let apps: Apps = appsFetchRef.apps;
+    let appsMap: AppsMap = appsFetchRef.appsMap;
 
     const cacheApp = async (app: App) => {
       if (app.type === "javascript") {
@@ -66,7 +76,11 @@ export namespace Render {
             const url = Strings.joinUrl(Html.DependencyPath, `${vendor.package}${vendor.version}.js`);
             return cache.set(url, { content: newContent, type: Html.ContentType.Js, sha256 });
           }
+          if (Html.IsImageOrgSvg(file)) {
+            return cache.set(file, { content: newContent, type: response.type, sha256 });
+          }
           const url = Strings.removeTrailingPath("/" + mapPathToCache(file));
+          console.log(url);
           return cache.set(url, { content: newContent, type: response.type, sha256 });
         })
       );
@@ -99,6 +113,7 @@ export namespace Render {
       console.time("CACHEALL");
       try {
         await Promise.all(apps.map(cacheApp));
+        console.log(cache.allKeys());
       } catch (error) {
         console.error("Error", error);
       } finally {
@@ -117,7 +132,19 @@ export namespace Render {
     };
 
     return {
-      cacheAll,
+      appNames: () => Object.keys(appsMap),
+      cacheAll: async () => {
+        cacheAll();
+        setInterval(async () => {
+          const maps = await fetchApps();
+          const hasChange = maps.apps.some((x) => apps.find((app) => app.name === x.name && app.version === x.version));
+          if (hasChange === false) {
+            constructor.onRebuild(Object.keys(maps.appsMap));
+            return cacheAll();
+          }
+          console.log("Nothing change");
+        }, 10000);
+      },
       hasApp,
       getApp,
       getFile: (key: string) => cache.get(key),
